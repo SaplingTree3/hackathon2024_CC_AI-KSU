@@ -205,7 +205,7 @@ public class MainActivity extends AppCompatActivity implements ImageAnalysis.Ana
 
     private void moveTextView(float x, float y){
         textViewSpeech.measure(0,0);
-        textViewSpeech.setX((float) ((x * -1) + (textViewSpeech.getMeasuredWidth() / 2.0)));
+        textViewSpeech.setX((float) (x - (textViewSpeech.getMeasuredWidth() / 2.0) + 100));
         textViewSpeech.setY(y);
     }
 
