@@ -1,33 +1,58 @@
 package com.example.hackathon2024_ksu;
 
+import static android.util.Log.println;
+
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.PointF;
+import android.media.Image;
 import android.os.Bundle;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.OptIn;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.core.CameraSelector;
+import androidx.camera.core.ExperimentalGetImage;
+import androidx.camera.core.ImageAnalysis;
+import androidx.camera.core.ImageProxy;
 import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.view.CameraController;
+import androidx.camera.view.LifecycleCameraController;
 import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.lifecycle.LifecycleOwner;
 
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
 import com.google.common.util.concurrent.ListenableFuture;
 
+import com.google.mlkit.vision.common.InputImage;
+import com.google.mlkit.vision.face.Face;
+import com.google.mlkit.vision.face.FaceContour;
+import com.google.mlkit.vision.face.FaceDetection;
+import com.google.mlkit.vision.face.FaceDetector;
+import com.google.mlkit.vision.face.FaceDetectorOptions;
+
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements ImageAnalysis.Analyzer{
 
     private static final int REQUEST_PERMISSION_CODE = 200;
     private PreviewView previewView;
@@ -36,6 +61,7 @@ public class MainActivity extends AppCompatActivity {
     private SpeechRecognizer speechRecognizer;
     private boolean isListening = false; // Tracks speech recognition state
     private ProcessCameraProvider cameraProvider; // Holds an instance of the camera provider
+    private FaceDetector detector;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,6 +71,12 @@ public class MainActivity extends AppCompatActivity {
         previewView = findViewById(R.id.previewView);
         textViewSpeech = findViewById(R.id.textViewSpeech);
         Button btnCapture = findViewById(R.id.btnCapture);
+
+        FaceDetectorOptions realTimeOpts =
+                new FaceDetectorOptions.Builder()
+                        .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
+                        .build();
+        detector = FaceDetection.getClient(realTimeOpts);
 
         initializeSpeechRecognizer();
 
@@ -125,9 +157,12 @@ public class MainActivity extends AppCompatActivity {
     private void bindCameraPreview() {
         if (cameraProvider != null) {
             Preview preview = new Preview.Builder().build();
+            ImageAnalysis.Builder builder = new ImageAnalysis.Builder();
+            ImageAnalysis analysis = builder.setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build();
+            analysis.setAnalyzer(ContextCompat.getMainExecutor(this), this);
             CameraSelector cameraSelector = new CameraSelector.Builder().requireLensFacing(CameraSelector.LENS_FACING_BACK).build();
             preview.setSurfaceProvider(previewView.getSurfaceProvider());
-            cameraProvider.bindToLifecycle((LifecycleOwner) this, cameraSelector, preview);
+            cameraProvider.bindToLifecycle((LifecycleOwner) this, cameraSelector, preview, analysis);
         }
     }
 
@@ -160,6 +195,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+
     // A simple adapter class to reduce boilerplate code in the main class
     private static abstract class RecognitionListenerAdapter implements RecognitionListener {
         @Override
@@ -176,5 +212,36 @@ public class MainActivity extends AppCompatActivity {
         public void onPartialResults(Bundle partialResults) {}
         @Override
         public void onEvent(int eventType, Bundle params) {}
+    }
+
+    private void moveTextView(float x, float y){
+        textViewSpeech.measure(0,0);
+        textViewSpeech.setX((float) ((x * -1) + (textViewSpeech.getMeasuredWidth() / 2.0)));
+        textViewSpeech.setY(y);
+    }
+
+
+    @OptIn(markerClass = ExperimentalGetImage.class)
+    @Override
+    public void analyze(ImageProxy imageProxy) {
+        Image mediaImage = imageProxy.getImage();
+        if (mediaImage != null) {
+            InputImage image = InputImage.fromMediaImage(mediaImage, imageProxy.getImageInfo().getRotationDegrees());
+            detector.process(image)
+                    .addOnSuccessListener(
+                            faces -> {
+                                for (Face face: faces){
+                                    List <PointF> location = face.getContour(FaceContour.FACE).getPoints();
+                                    moveTextView((location.get(0).x),location.get(0).y);
+                                }
+                            })
+                    .addOnFailureListener(
+                            e -> {
+                                // Task failed with an exception
+                                // ...
+                            })
+                    .addOnCompleteListener(results -> imageProxy.close());
+
+        }
     }
 }
