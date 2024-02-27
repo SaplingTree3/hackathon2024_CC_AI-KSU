@@ -1,4 +1,4 @@
-Team Live Vision
+Team Name: Live Vision
 
 Team Members: John Sheffield, Alhasan Mohsen, and Andrew Palmertree
 
